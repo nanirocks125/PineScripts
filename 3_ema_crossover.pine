@@ -1,0 +1,83 @@
+//@version=5
+strategy("EMA Cross w/ TP Only", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
+
+// --- INPUTS ---
+rvolThreshold = input.float(15.0, title="Relative Volume Threshold")
+volLength = input.int(10, title="Volume MA Length for RVOL")
+volLookback = input.int(3, title="Bars to Look Back for RVOL Spike")
+minPrice = input.float(100.0, title="Minimum Price")
+tpPercent = input.float(5.0, title="Take Profit Target (%)")
+barGap = input.float(10.0, title="Gap above Price (in points)")
+heightMultiplier = input.float(2.0, title="RVOL Height Multiplier") 
+
+// --- INDICTATOR SECTION ---
+ema9 = ta.ema(close, 9)
+ema21 = ta.ema(close, 21)
+ema200 = ta.ema(close, 200)
+rsiValue = ta.rsi(close, 14)
+
+plot(ema9, color=color.blue, title="EMA 9")
+plot(ema21, color=color.orange, title="EMA 21")
+plot(ema200, color=color.red, title="EMA 200", linewidth=2)
+
+// --- RELATIVE VOLUME CALCULATION ---
+AvgVol = ta.sma(volume, volLength)
+rvol = AvgVol[1] > 0 ? volume / AvgVol[1] : 0
+
+// --- FLOATING RVOL CANDLE PLOTTING ---
+rvolBase = high + barGap
+rvolTop = rvolBase + (rvol * heightMultiplier)
+
+plotcandle(rvolBase, rvolTop, rvolBase, rvolTop, title="Floating RVOL", color=color.new(color.gray, 30), wickcolor=color.new(color.gray, 30), bordercolor=color.new(color.gray, 30), display=display.pane)
+
+barColor = rvol > rvolThreshold ? color.yellow : na
+plotcandle(rvolBase, rvolTop, rvolBase, rvolTop, title="Threshold Highlight", color=barColor, wickcolor=barColor, bordercolor=barColor, display=display.pane)
+
+plot(rvol, title="Relative Volume", color=color.gray, display=display.data_window + display.status_line)
+
+// --- ENTRY CONDITIONS ---
+crossUp = ta.crossover(ema9, ema21)
+trendCondition = ema21 > ema200
+priceCondition = close > minPrice
+rvolCondition = ta.highest(rvol, volLookback) > rvolThreshold
+
+longCondition = crossUp and trendCondition and priceCondition and rvolCondition
+
+// Green background for Entries
+bgcolor(longCondition ? color.new(color.green, 85) : na, title="Entry Vertical Line")
+
+// --- STRATEGY EXECUTION & COMPACT LABELS ---
+var int tradeNum = 0 
+isNewEntry = longCondition and strategy.position_size == 0
+
+if (isNewEntry)
+    tradeNum += 1 
+    
+    label.new(bar_index, na, "#" + str.tostring(tradeNum), color=color.green, textcolor=color.white, style=label.style_label_up, yloc=yloc.belowbar, size=size.small)
+    
+    tradeComment = str.format("RVOL: {0,number,#.##} | RSI: {1,number,#.##}", rvol, rsiValue)
+    log.info("BUY #{0} TRIGGERED | Price: {1} | RVOL: {2}", tradeNum, close, rvol)
+    strategy.entry("Long", strategy.long, comment=tradeComment)
+
+// --- EXITS & EXIT VISUALS (Take Profit ONLY) ---
+var float tpPrice = na
+
+if (strategy.position_size > 0)
+    tpPrice := strategy.position_avg_price * (1 + (tpPercent / 100))
+    strategy.exit("Take Profit", "Long", limit=tpPrice, comment="TP Hit")
+else
+    tpPrice := na
+
+// Detect strictly if the 5% Take Profit is hit to draw the red exit line/label
+isExiting = strategy.position_size > 0 and not na(tpPrice) and high >= tpPrice
+
+var bool exitLabelDrawn = false 
+
+if (isNewEntry)
+    exitLabelDrawn := false 
+
+if (isExiting and not exitLabelDrawn)
+    exitLabelDrawn := true
+    label.new(bar_index, na, "#" + str.tostring(tradeNum), color=color.red, textcolor=color.white, style=label.style_label_down, yloc=yloc.abovebar, size=size.small)
+
+bgcolor(isExiting ? color.new(color.red, 85) : na, title="Exit Vertical Line")

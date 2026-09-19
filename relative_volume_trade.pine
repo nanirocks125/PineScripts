@@ -1,0 +1,59 @@
+//@version=5
+strategy("Relative Volume Strategy", overlay=true, process_orders_on_close=true, pyramiding=100)
+
+// Inputs
+rvolLength = input.int(10, title="SMA Volume Length")
+rvolThreshold = input.float(6.0, title="RVOL Threshold")
+targetPercent = input.float(24.0, title="Target Percentage (%)")
+barGap = input.float(10.0, title="Gap above Price (in points)")
+heightMultiplier = input.float(2.0, title="RVOL Height Multiplier") 
+
+ema9 = ta.ema(close, 9)
+ema21 = ta.ema(close, 21)
+ema200 = ta.ema(close, 200)
+
+plot(ema9, color=color.blue, title="EMA 9", linewidth=2)
+plot(ema21, color=color.orange, title="EMA 21", linewidth=2)
+plot(ema200, color=color.red, title="EMA 200", linewidth=2)
+
+// Relative Volume Calculation
+avgVolume = ta.sma(volume, rvolLength)
+rvol = volume / avgVolume[1]
+
+// --- FLOATING RVOL CANDLE PLOTTING ---
+rvolBase = high + barGap
+rvolTop = rvolBase + (rvol * heightMultiplier)
+
+plotcandle(rvolBase, rvolTop, rvolBase, rvolTop, title="Floating RVOL", color=color.new(color.gray, 30), wickcolor=color.new(color.gray, 30), bordercolor=color.new(color.gray, 30), display=display.pane)
+
+barColor = rvol > rvolThreshold ? color.yellow : na
+plotcandle(rvolBase, rvolTop, rvolBase, rvolTop, title="Threshold Highlight", color=barColor, wickcolor=barColor, bordercolor=barColor, display=display.pane)
+
+plot(rvol, title="Relative Volume", color=color.gray, display=display.data_window + display.status_line)
+
+
+// Buy Condition
+buyCondition = rvol > rvolThreshold and close > ema200
+
+// Order Execution, Target Logic & Buy Vertical Line
+if (buyCondition)
+    // 1. Create a Unique ID for each entry using bar_index
+    tradeId = "Long_" + str.tostring(bar_index)
+    
+    // 2. Execute Entry
+    strategy.entry(tradeId, strategy.long)
+    
+    // 3. Calculate target price based on current close (since process_orders_on_close=true)
+    targetPrice = close * (1 + (targetPercent / 100))
+    
+    // 4. Attach a specific exit order to this unique tradeId
+    strategy.exit("Target_" + str.tostring(bar_index), from_entry=tradeId, limit=targetPrice)
+    
+    // 5. Draw Buy Vertical Line
+    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.green, 40), width=2)
+
+// Sell Vertical Line Detection
+// strategy.position_size మునుపటి candle కన్నా తక్కువ ఉంటే, ఏదో ఒక trade target hit అయ్యి exit అయినట్లు అర్ధం.
+sellCondition = strategy.position_size < nz(strategy.position_size[1])
+if sellCondition
+    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.red, 40), width=2)
