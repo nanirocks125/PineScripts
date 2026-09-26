@@ -7,6 +7,7 @@ targetPercent = input.float(24.0, title="Target Percentage (%)")
 barGap = input.float(10.0, title="Gap above Price (in points)")
 heightMultiplier = input.float(2.0, title="RVOL Height Multiplier") 
 emaGapThreshold = input.float(0.0, title="EMA 200 Gap Threshold (%)")
+emiPriceGapMoreThanThreshold = input.bool(false, title = "EmiPriceGapMoreThanThreshold")
 
 ema9 = ta.ema(close, 9)
 ema21 = ta.ema(close, 21)
@@ -39,17 +40,34 @@ plot(rvol, title="Relative Volume", color=color.gray, display=display.data_windo
 
 gapFromPriceToEMA = (close - ema200) / ema200 * 100
 
+emiPriceGapCondition = emiPriceGapMoreThanThreshold ? gapFromPriceToEMA > emaGapThreshold : gapFromPriceToEMA < emaGapThreshold
 
 // Buy Condition
-buyCondition = rvol > rvolThreshold and close > ema200 and gapFromPriceToEMA > emaGapThreshold
+buyCondition = rvol > rvolThreshold and close > ema200 and emiPriceGapCondition
 
 // Order Execution, Target Logic & Buy Vertical Line
 if (buyCondition)
     // 1. Create a Unique ID for each entry using bar_index
     tradeId = "Long_" + str.tostring(bar_index)
-    
+
+    // Construct the comment string formatting values to 2 decimal places
+    // Prepare comment string with technical values formatted to 2 decimal places
+    entryMsg = "O: " + str.tostring(open, "#.##") + 
+                   " | C: " + str.tostring(close, "#.##") + 
+                   " | ADX: " + str.tostring(adx, "#.##") + 
+                   " | ATRP: " + str.tostring(atrp, "#.##") + "%" + 
+                   " | RSI: " + str.tostring(rsi, "#.##") + 
+                   " | MACD: " + str.tostring(macdLine, "#.##") + 
+                   " | RV: " + str.tostring(rvol, "#.##") + 
+                   " | G: " + str.tostring(gapFromPriceToEMA, "#.##") + 
+                   " | EMA9: " + str.tostring(ema9, "#.##") + 
+                   " | EMA21: " + str.tostring(ema21, "#.##") + 
+                   " | EMA200: " + str.tostring(ema200, "#.##")    
+    // entryMsg = "RV:" + str.tostring(rvol, "#.##") + " G:" + str.tostring(gapFromPriceToEMA, "#.##") + "%"    
+
+
     // 2. Execute Entry
-    strategy.entry(tradeId, strategy.long)
+    strategy.entry(tradeId, strategy.long, comment = entryMsg)
     
     // 3. Calculate target price based on current close (since process_orders_on_close=true)
     targetPrice = close * (1 + (targetPercent / 100))
