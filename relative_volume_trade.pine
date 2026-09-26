@@ -1,16 +1,22 @@
 //@version=5
-strategy("Relative Volume Strategy", overlay=true, process_orders_on_close=true, pyramiding=100)
-
+strategy("Relative Volume Strategy", overlay=true, process_orders_on_close=true, pyramiding=100, close_entries_rule="ANY")
 // Inputs
 rvolLength = input.int(10, title="SMA Volume Length")
 rvolThreshold = input.float(6.0, title="RVOL Threshold")
 targetPercent = input.float(24.0, title="Target Percentage (%)")
 barGap = input.float(10.0, title="Gap above Price (in points)")
 heightMultiplier = input.float(2.0, title="RVOL Height Multiplier") 
+emaGapThreshold = input.float(0.0, title="EMA 200 Gap Threshold (%)")
 
 ema9 = ta.ema(close, 9)
 ema21 = ta.ema(close, 21)
 ema200 = ta.ema(close, 200)
+
+// Additional Indicator Calculations for Entry Comment
+[diplus, diminus, adx] = ta.dmi(14, 14)
+atrp = (ta.atr(14) / close) * 100
+rsi = ta.rsi(close, 14)
+[macdLine, signalLine, histLine] = ta.macd(close, 12, 26, 9)
 
 plot(ema9, color=color.blue, title="EMA 9", linewidth=2)
 plot(ema21, color=color.orange, title="EMA 21", linewidth=2)
@@ -31,9 +37,11 @@ plotcandle(rvolBase, rvolTop, rvolBase, rvolTop, title="Threshold Highlight", co
 
 plot(rvol, title="Relative Volume", color=color.gray, display=display.data_window + display.status_line)
 
+gapFromPriceToEMA = (close - ema200) / ema200 * 100
+
 
 // Buy Condition
-buyCondition = rvol > rvolThreshold and close > ema200
+buyCondition = rvol > rvolThreshold and close > ema200 and gapFromPriceToEMA > emaGapThreshold
 
 // Order Execution, Target Logic & Buy Vertical Line
 if (buyCondition)
@@ -52,8 +60,14 @@ if (buyCondition)
     // 5. Draw Buy Vertical Line
     line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.green, 40), width=2)
 
+// Close positions if price loses the EMA 21
+// exitCondition = ta.crossunder(close, ema21)
+
+// if (exitCondition)
+//     strategy.close_all(comment="Trend Broken")
+
 // Sell Vertical Line Detection
 // strategy.position_size మునుపటి candle కన్నా తక్కువ ఉంటే, ఏదో ఒక trade target hit అయ్యి exit అయినట్లు అర్ధం.
-sellCondition = strategy.position_size < nz(strategy.position_size[1])
-if sellCondition
-    line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.red, 40), width=2)
+// sellCondition = strategy.position_size < nz(strategy.position_size[1])
+// if sellCondition
+//     line.new(bar_index, low, bar_index, high, extend=extend.both, color=color.new(color.red, 40), width=2)
